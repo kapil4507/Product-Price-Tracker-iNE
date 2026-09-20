@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Plus, Loader2, CheckCircle2, AlertCircle, Link2 } from 'lucide-react';
+import { Search, Plus, Loader2, CheckCircle2, AlertCircle, Link as LinkIcon } from 'lucide-react';
 import axios from 'axios';
 
 export default function ProductSearch({ onProductAdded, trackedUrls = [] }) {
@@ -11,28 +11,38 @@ export default function ProductSearch({ onProductAdded, trackedUrls = [] }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  // Debounced search
+  // Debounced search with race condition prevention
   useEffect(() => {
-    if (!query.trim()) {
+    const currentQuery = query.trim();
+    if (!currentQuery) {
       setResults([]);
       setLoading(false);
+      setIsOpen(false);
       return;
     }
 
+    const controller = new AbortController();
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await axios.get(`/api/search?q=${encodeURIComponent(query.trim())}`);
+        const res = await axios.get(`/api/search?q=${encodeURIComponent(currentQuery)}`, {
+          signal: controller.signal
+        });
         setResults(res.data || []);
         setIsOpen(true);
       } catch (err) {
-        console.error('Search error:', err);
+        if (!axios.isCancel(err)) {
+          console.error('Search error:', err);
+        }
       } finally {
         setLoading(false);
       }
-    }, 250);
+    }, 200);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [query]);
 
   // Click outside to close dropdown
@@ -54,7 +64,7 @@ export default function ProductSearch({ onProductAdded, trackedUrls = [] }) {
         name: product.name,
         url: product.url
       });
-      setStatusMessage({ type: 'success', text: `Added "${product.name}" to tracking!` });
+      setStatusMessage({ type: 'success', text: `Added "${product.name}"` });
       setQuery('');
       setIsOpen(false);
       if (onProductAdded) onProductAdded(res.data);
@@ -63,17 +73,15 @@ export default function ProductSearch({ onProductAdded, trackedUrls = [] }) {
       setStatusMessage({ type: 'error', text: errMsg });
     } finally {
       setAddingId(null);
-      setTimeout(() => setStatusMessage(null), 4000);
+      setTimeout(() => setStatusMessage(null), 3000);
     }
   };
 
-  // Allow direct URL submit if user pasted a link
   const handleDirectUrlSubmit = async (e) => {
     e.preventDefault();
     if (!query.trim()) return;
 
     if (query.startsWith('https://demo.inelabteamdev.com')) {
-      // Extract SKU or name from query
       const nameGuess = `Product (${query.split('/').pop() || 'Tracked'})`;
       await handleAddProduct({ name: nameGuess, url: query.trim() });
     }
@@ -83,25 +91,25 @@ export default function ProductSearch({ onProductAdded, trackedUrls = [] }) {
     <div className="relative w-full" ref={dropdownRef}>
       <form onSubmit={handleDirectUrlSubmit} className="relative">
         <div className="relative flex items-center">
-          <Search className="w-5 h-5 absolute left-3.5 text-slate-400 pointer-events-none" />
+          <Search className="w-4 h-4 absolute left-3.5 text-neutral-400 pointer-events-none" />
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onFocus={() => query.trim() && setIsOpen(true)}
-            placeholder="Search mock store products by name, brand, or SKU (e.g. 'Kettle', 'Watch', 'Ironwood')..."
-            className="w-full pl-11 pr-24 py-3 bg-slate-900 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-sm shadow-inner"
+            placeholder="Search products by name or paste URL (e.g. 'Kettle', 'Watch')..."
+            className="w-full pl-10 pr-24 py-2.5 bg-neutral-950 border border-neutral-700 rounded-lg text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-neutral-500 text-sm"
           />
           <div className="absolute right-2.5 flex items-center gap-2">
             {loading ? (
-              <Loader2 className="w-5 h-5 text-indigo-400 animate-spin mr-1" />
+              <Loader2 className="w-4 h-4 text-neutral-400 animate-spin mr-1" />
             ) : query.startsWith('https://demo.inelabteamdev.com') ? (
               <button
                 type="submit"
                 disabled={addingId !== null}
-                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1 transition-all"
+                className="text-xs font-medium px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1 transition-colors"
               >
-                <Link2 className="w-3.5 h-3.5" /> Add URL
+                <LinkIcon className="w-3 h-3" /> Add Link
               </button>
             ) : null}
           </div>
@@ -111,16 +119,16 @@ export default function ProductSearch({ onProductAdded, trackedUrls = [] }) {
       {/* Status banner */}
       {statusMessage && (
         <div
-          className={`mt-2.5 px-3.5 py-2 rounded-lg text-xs flex items-center gap-2 border ${
+          className={`mt-2 px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 border ${
             statusMessage.type === 'success'
-              ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300'
-              : 'bg-rose-950/60 border-rose-800 text-rose-300'
+              ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-300'
+              : 'bg-rose-950/40 border-rose-800/60 text-rose-300'
           }`}
         >
           {statusMessage.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
           ) : (
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
           )}
           <span>{statusMessage.text}</span>
         </div>
@@ -128,10 +136,10 @@ export default function ProductSearch({ onProductAdded, trackedUrls = [] }) {
 
       {/* Search dropdown results */}
       {isOpen && results.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-2 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl shadow-black/60 max-h-96 overflow-y-auto z-50 divide-y divide-slate-800/60">
-          <div className="px-4 py-2 bg-slate-950/50 text-[11px] font-medium text-slate-400 flex justify-between items-center">
-            <span>Found {results.length} products in mock store</span>
-            <span>Click to track</span>
+        <div className="absolute left-0 right-0 top-full mt-1.5 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl max-h-80 overflow-y-auto z-50 divide-y divide-neutral-800">
+          <div className="px-3.5 py-1.5 bg-neutral-950 text-[11px] text-neutral-400 flex justify-between items-center">
+            <span>{results.length} matches found</span>
+            <span>Click to add</span>
           </div>
           {results.map((product) => {
             const isTracked = trackedUrls.includes(product.url);
@@ -140,21 +148,21 @@ export default function ProductSearch({ onProductAdded, trackedUrls = [] }) {
             return (
               <div
                 key={product.id}
-                className="p-3.5 hover:bg-slate-800/50 transition-colors flex items-center justify-between gap-4 group"
+                className="p-3 hover:bg-neutral-800/60 transition-colors flex items-center justify-between gap-3"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="text-sm font-semibold text-slate-200 group-hover:text-indigo-300 transition-colors truncate">
+                    <h4 className="text-sm font-medium text-neutral-100 truncate">
                       {product.name}
                     </h4>
-                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60">
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">
                       {product.sku}
                     </span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-950/60 text-indigo-400 border border-indigo-800/40">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300">
                       {product.category}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400 truncate mt-0.5">
+                  <p className="text-xs text-neutral-400 truncate mt-0.5">
                     {product.brand} · {product.description}
                   </p>
                 </div>
@@ -163,10 +171,10 @@ export default function ProductSearch({ onProductAdded, trackedUrls = [] }) {
                   type="button"
                   onClick={() => handleAddProduct(product)}
                   disabled={isTracked || isAdding}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 shrink-0 transition-all ${
+                  className={`px-2.5 py-1.5 rounded text-xs font-medium flex items-center gap-1 shrink-0 transition-colors ${
                     isTracked
-                      ? 'bg-slate-800/50 text-slate-500 border border-slate-800 cursor-not-allowed'
-                      : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm shadow-indigo-600/30'
+                      ? 'bg-neutral-800 text-neutral-500 cursor-not-allowed'
+                      : 'bg-indigo-600 hover:bg-indigo-500 text-white'
                   }`}
                 >
                   {isAdding ? (
@@ -175,7 +183,7 @@ export default function ProductSearch({ onProductAdded, trackedUrls = [] }) {
                     'Tracked'
                   ) : (
                     <>
-                      <Plus className="w-3.5 h-3.5" /> Track
+                      <Plus className="w-3 h-3" /> Track
                     </>
                   )}
                 </button>

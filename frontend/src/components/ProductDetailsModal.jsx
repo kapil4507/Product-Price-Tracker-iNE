@@ -3,17 +3,10 @@ import {
   X,
   RefreshCw,
   ExternalLink,
-  TrendingUp,
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
-  Clock,
   Trash2
 } from 'lucide-react';
 import {
   ResponsiveContainer,
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -23,7 +16,6 @@ import {
 } from 'recharts';
 import axios from 'axios';
 
-// Robust helper to parse numeric value from any price string format (INR, Euro-formatted, Unicode, spaced, etc.)
 function parseNumericPrice(priceStr) {
   if (!priceStr) return null;
   let s = String(priceStr).trim();
@@ -31,17 +23,14 @@ function parseNumericPrice(priceStr) {
   s = s.replace(/₹|Rs\.?|INR/gi, '').trim();
   s = s.replace(/\/-.*$/i, '').trim();
 
-  // Euro format with decimals e.g. "3.383,00"
   if (/,\d{2}$/.test(s)) {
     s = s.replace(/,\d{2}$/, '');
     s = s.replace(/\./g, '');
   } else if (/\.\d{2}$/.test(s)) {
-    // Standard decimal format e.g. "17,331.00"
     s = s.replace(/\.\d{2}$/, '');
     s = s.replace(/,/g, '');
   }
 
-  // Remove any remaining non-digits
   s = s.replace(/\D/g, '');
   const num = parseInt(s, 10);
   return isNaN(num) || num <= 0 ? null : num;
@@ -72,7 +61,6 @@ export default function ProductDetailsModal({ product, onClose, onProductDeleted
 
   useEffect(() => {
     fetchData();
-    // Poll every 8 seconds while modal is open to catch in-flight scrape results
     const interval = setInterval(fetchData, 8000);
     return () => clearInterval(interval);
   }, [product?.id]);
@@ -81,7 +69,6 @@ export default function ProductDetailsModal({ product, onClose, onProductDeleted
     setScraping(true);
     try {
       await axios.post(`/api/products/${product.id}/scrape`);
-      // Re-fetch after short delays to catch retry progress
       setTimeout(fetchData, 2500);
       setTimeout(fetchData, 6000);
       setTimeout(() => {
@@ -108,7 +95,6 @@ export default function ProductDetailsModal({ product, onClose, onProductDeleted
     }
   };
 
-  // Prepare chart data
   const chartData = history
     .map((item) => {
       const date = new Date(item.scraped_at);
@@ -124,46 +110,43 @@ export default function ProductDetailsModal({ product, onClose, onProductDeleted
     })
     .filter((item) => item.priceValue !== null);
 
-  // Calculate statistics
   const successCount = logs.filter(l => l.status === 'success').length;
   const retryCount = logs.filter(l => l.status === 'retried').length;
   const failCount = logs.filter(l => l.status === 'failed').length;
 
-  // Derive latest price and stock dynamically from live history
   const latestEntry = history.length > 0 ? history[history.length - 1] : null;
-  const currentPrice = latestEntry ? latestEntry.price : (product.current_price || 'Pending scrape');
+  const currentPrice = latestEntry ? latestEntry.price : (product.current_price || 'Pending');
   const currentStock = latestEntry ? latestEntry.stock_status : (product.current_stock || 'Unknown');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/80 backdrop-blur-sm overflow-y-auto animate-fade-in">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 overflow-y-auto">
+      <div className="bg-neutral-900 border border-neutral-800 rounded-xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden my-auto">
         {/* Modal Header */}
-        <div className="p-5 sm:p-6 border-b border-slate-800 flex items-start justify-between gap-4 bg-slate-950/40">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap mb-1.5">
-              <h2 className="text-xl font-bold text-slate-100 truncate">
+        <div className="p-4 sm:p-5 border-b border-neutral-800 flex items-start justify-between gap-3 bg-neutral-950/40">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-base sm:text-lg font-semibold text-white truncate">
                 {product.name}
               </h2>
               <a
                 href={product.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 font-medium px-2 py-0.5 rounded bg-indigo-950/60 border border-indigo-800/40"
+                className="inline-flex items-center gap-1 text-xs text-neutral-400 hover:text-white px-2 py-0.5 rounded bg-neutral-800 border border-neutral-700 transition-colors"
               >
-                View in Store <ExternalLink className="w-3 h-3" />
+                Store Link <ExternalLink className="w-3 h-3" />
               </a>
             </div>
-            <p className="text-xs text-slate-400 truncate">
-              URL: <span className="font-mono text-slate-300">{product.url}</span>
+            <p className="text-xs text-neutral-500 font-mono truncate mt-1">
+              {product.url}
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={handleManualScrape}
               disabled={scraping}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-all disabled:opacity-50 shadow-sm"
-              title="Trigger immediate scrape now"
+              className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${scraping ? 'animate-spin' : ''}`} />
               <span>{scraping ? 'Scraping...' : 'Scrape Now'}</span>
@@ -172,93 +155,91 @@ export default function ProductDetailsModal({ product, onClose, onProductDeleted
             <button
               onClick={handleDelete}
               disabled={deleting}
-              className="p-2 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 border border-slate-800 hover:border-rose-900/60 transition-colors"
-              title="Remove product"
+              className="p-1.5 rounded-lg text-neutral-400 hover:text-rose-400 hover:bg-neutral-800 transition-colors"
+              title="Delete product"
             >
               <Trash2 className="w-4 h-4" />
             </button>
 
             <button
               onClick={onClose}
-              className="p-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+              className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
         {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
-          {/* Quick Metrics Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="p-3.5 rounded-xl bg-slate-950/50 border border-slate-800/80">
-              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Latest Price</span>
-              <p className="text-lg font-bold text-emerald-400 mt-0.5">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-5">
+          {/* Quick Metrics */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800">
+              <span className="text-[11px] text-neutral-400">Current Price</span>
+              <p className="text-base font-semibold text-emerald-400 mt-0.5">
                 {currentPrice}
               </p>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-slate-950/50 border border-slate-800/80">
-              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Stock Status</span>
-              <p className="text-sm font-semibold text-slate-200 mt-1 truncate">
+            <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800">
+              <span className="text-[11px] text-neutral-400">Stock</span>
+              <p className="text-xs font-medium text-neutral-200 mt-1 truncate">
                 {currentStock}
               </p>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-slate-950/50 border border-slate-800/80">
-              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Data Points</span>
-              <p className="text-lg font-bold text-indigo-400 mt-0.5">{history.length}</p>
+            <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800">
+              <span className="text-[11px] text-neutral-400">Snapshots</span>
+              <p className="text-base font-semibold text-neutral-100 mt-0.5">{history.length}</p>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-slate-950/50 border border-slate-800/80">
-              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Scrape Attempts</span>
-              <div className="flex items-center gap-2 mt-1 text-xs">
-                <span className="text-emerald-400 font-semibold">{successCount} ok</span>
-                <span className="text-amber-400 font-semibold">{retryCount} retry</span>
-                <span className="text-rose-400 font-semibold">{failCount} fail</span>
+            <div className="p-3 rounded-lg bg-neutral-950 border border-neutral-800">
+              <span className="text-[11px] text-neutral-400">Logs Summary</span>
+              <div className="flex items-center gap-1.5 mt-1 text-xs">
+                <span className="text-emerald-400 font-medium">{successCount} ok</span>
+                <span className="text-neutral-500">/</span>
+                <span className="text-amber-400 font-medium">{retryCount} retry</span>
+                <span className="text-neutral-500">/</span>
+                <span className="text-rose-400 font-medium">{failCount} fail</span>
               </div>
             </div>
           </div>
 
           {/* Section 1: Price History Chart */}
-          <div className="p-4 sm:p-5 rounded-xl bg-slate-950/50 border border-slate-800">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-indigo-400" />
-                <h3 className="text-sm font-semibold text-slate-200">Price History Over Time</h3>
-              </div>
-              <span className="text-xs text-slate-400">{history.length} snapshots recorded</span>
+          <div className="p-4 rounded-lg bg-neutral-950 border border-neutral-800">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-neutral-200">Price Trend</h3>
+              <span className="text-[11px] text-neutral-500">{history.length} data points</span>
             </div>
 
             {loading ? (
-              <div className="h-56 flex items-center justify-center text-slate-500 text-xs">
-                Loading history data...
+              <div className="h-48 flex items-center justify-center text-neutral-500 text-xs">
+                Loading history...
               </div>
             ) : chartData.length === 0 ? (
-              <div className="h-56 flex flex-col items-center justify-center text-slate-500 text-xs text-center p-4">
-                <Clock className="w-8 h-8 text-slate-600 mb-2 stroke-1" />
-                <p>No price history recorded yet.</p>
-                <p className="text-slate-600 mt-1">Click "Scrape Now" above to capture the first live snapshot.</p>
+              <div className="h-48 flex flex-col items-center justify-center text-neutral-500 text-xs text-center p-4">
+                <p>No price records yet.</p>
+                <p className="text-neutral-600 mt-0.5">Click "Scrape Now" to fetch the first snapshot.</p>
               </div>
             ) : (
-              <div className="h-64 w-full">
+              <div className="h-56 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
+                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.25} />
                         <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
                     <XAxis
                       dataKey="displayTime"
-                      stroke="#64748b"
+                      stroke="#737373"
                       fontSize={11}
                       tickLine={false}
                     />
                     <YAxis
-                      stroke="#64748b"
+                      stroke="#737373"
                       fontSize={11}
                       domain={['dataMin - 150', 'dataMax + 150']}
                       tickFormatter={(val) => `₹${Number(val).toLocaleString('en-IN')}`}
@@ -266,29 +247,28 @@ export default function ProductDetailsModal({ product, onClose, onProductDeleted
                     />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: '#0f172a',
-                        borderColor: '#334155',
-                        borderRadius: '0.75rem',
+                        backgroundColor: '#171717',
+                        borderColor: '#404040',
+                        borderRadius: '0.375rem',
                         fontSize: '12px',
-                        color: '#f8fafc',
-                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)'
+                        color: '#f5f5f5'
                       }}
                       formatter={(val, name, props) => [
                         `${props.payload.priceRaw} (${props.payload.stock})`,
-                        'Price & Stock'
+                        'Price'
                       ]}
                       labelFormatter={(label, payload) => {
                         const item = payload?.[0]?.payload;
-                        return item ? `${item.displayDate} at ${item.displayTime}` : label;
+                        return item ? `${item.displayDate} ${item.displayTime}` : label;
                       }}
                     />
                     <Area
                       type="monotoneX"
                       dataKey="priceValue"
                       stroke="#6366f1"
-                      strokeWidth={2.5}
-                      dot={{ r: 3.5, fill: '#818cf8', strokeWidth: 1, stroke: '#1e1b4b' }}
-                      activeDot={{ r: 6, fill: '#a5b4fc', stroke: '#6366f1', strokeWidth: 2 }}
+                      strokeWidth={2}
+                      dot={{ r: 3, fill: '#6366f1', strokeWidth: 0 }}
+                      activeDot={{ r: 5, fill: '#818cf8', strokeWidth: 0 }}
                       fillOpacity={1}
                       fill="url(#priceGradient)"
                     />
@@ -299,58 +279,43 @@ export default function ProductDetailsModal({ product, onClose, onProductDeleted
           </div>
 
           {/* Section 2: Scrape Logs Table */}
-          <div className="p-4 sm:p-5 rounded-xl bg-slate-950/50 border border-slate-800">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-indigo-400" />
-                <h3 className="text-sm font-semibold text-slate-200">Scrape Attempt Logs</h3>
-              </div>
-              <span className="text-[11px] text-slate-400">All outcomes recorded transparently</span>
+          <div className="p-4 rounded-lg bg-neutral-950 border border-neutral-800">
+            <div className="flex items-center justify-between mb-2.5">
+              <h3 className="text-xs font-semibold text-neutral-200">Scrape Logs</h3>
+              <span className="text-[11px] text-neutral-500">Detailed attempt history</span>
             </div>
 
             {logs.length === 0 ? (
-              <p className="text-xs text-slate-500 py-6 text-center">No scrape logs recorded yet.</p>
+              <p className="text-xs text-neutral-500 py-4 text-center">No logs recorded yet.</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-300">
-                  <thead className="bg-slate-900/80 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+              <div className="overflow-x-auto max-h-48 overflow-y-auto">
+                <table className="w-full text-left text-xs text-neutral-300">
+                  <thead className="bg-neutral-900 text-neutral-400 text-[10px] uppercase tracking-wider sticky top-0">
                     <tr>
-                      <th className="py-2.5 px-3">Attempted At</th>
-                      <th className="py-2.5 px-3">Outcome Status</th>
-                      <th className="py-2.5 px-3">Details / Error Message</th>
+                      <th className="py-2 px-2.5">Timestamp</th>
+                      <th className="py-2 px-2.5">Status</th>
+                      <th className="py-2 px-2.5">Details</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60">
+                  <tbody className="divide-y divide-neutral-800/60">
                     {logs.map((log) => {
                       const date = new Date(log.attempted_at);
                       return (
-                        <tr key={log.id} className="hover:bg-slate-900/40 transition-colors">
-                          <td className="py-2.5 px-3 whitespace-nowrap font-mono text-slate-400 text-[11px]">
+                        <tr key={log.id} className="hover:bg-neutral-900/50">
+                          <td className="py-2 px-2.5 whitespace-nowrap font-mono text-neutral-400 text-[11px]">
                             {date.toLocaleDateString()} {date.toLocaleTimeString()}
                           </td>
-                          <td className="py-2.5 px-3 whitespace-nowrap">
+                          <td className="py-2 px-2.5 whitespace-nowrap">
                             {log.status === 'success' ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                <CheckCircle className="w-3 h-3" /> success
-                              </span>
+                              <span className="text-emerald-400 font-medium">success</span>
                             ) : log.status === 'retried' ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                                <AlertTriangle className="w-3 h-3" /> retried
-                              </span>
+                              <span className="text-amber-400 font-medium">retried</span>
                             ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                                <XCircle className="w-3 h-3" /> failed
-                              </span>
+                              <span className="text-rose-400 font-medium">failed</span>
                             )}
                           </td>
-                          <td className="py-2.5 px-3 text-slate-400 text-[11px]">
-                            {log.error_message ? (
-                              <span className="text-rose-300/90 font-mono bg-rose-950/30 px-1.5 py-0.5 rounded border border-rose-900/40">
-                                {log.error_message}
-                              </span>
-                            ) : (
-                              <span className="text-slate-500">—</span>
-                            )}
+                          <td className="py-2 px-2.5 text-neutral-400 text-[11px] max-w-xs truncate">
+                            {log.error_message || '—'}
                           </td>
                         </tr>
                       );

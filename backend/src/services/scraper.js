@@ -3,10 +3,10 @@ const supabase = require('../config/supabase');
 
 const HEADLESS = process.env.HEADLESS !== 'false';
 
-// Cache catalog items in memory so search is instantaneous
-let catalogCache = null;
-let catalogCacheTime = 0;
-const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+// In-memory catalog keyed by product ID to eliminate duplicates and accumulate products
+const catalogMap = new Map();
+let lastCatalogFetch = 0;
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 /**
  * Normalizes price strings by removing decoy formatting:
@@ -43,50 +43,72 @@ function cleanPrice(rawPrice) {
 
 /**
  * Fast search against INE demo store catalog.
- * Uses lightweight HTTP fetching (fetches 1000 items in ~400ms) with in-memory caching.
+ * Fetches catalog pages, deduplicates by ID, and sorts results deterministically.
  */
 async function searchProducts(query = '') {
   const now = Date.now();
-  if (!catalogCache || now - catalogCacheTime > CACHE_TTL_MS) {
+  if (catalogMap.size < 500 || now - lastCatalogFetch > CACHE_TTL_MS) {
     try {
       const pageNumbers = Array.from({ length: 17 }, (_, i) => i + 1);
-      const responses = await Promise.all(
+      const responses = await Promise.allSettled(
         pageNumbers.map(page =>
           fetch(`https://demo.inelabteamdev.com/api/catalog?page=${page}&pageSize=60`)
             .then(res => {
-              if (!res.ok) throw new Error(`Catalog API responded with ${res.status}`);
+              if (!res.ok) throw new Error(`Status ${res.status}`);
               return res.json();
             })
         )
       );
 
-      catalogCache = responses.flatMap(r => r.items || []).map(item => ({
-        id: item.id,
-        name: item.name,
-        brand: item.brand,
-        category: item.category,
-        sku: item.sku,
-        description: item.description,
-        url: `https://demo.inelabteamdev.com/product/${item.id}`
-      }));
-      catalogCacheTime = now;
+      for (const res of responses) {
+        if (res.status === 'fulfilled' && res.value?.items) {
+          for (const item of res.value.items) {
+            if (item && item.id && !catalogMap.has(item.id)) {
+              catalogMap.set(item.id, {
+                id: item.id,
+                name: item.name,
+                brand: item.brand,
+                category: item.category,
+                sku: item.sku,
+                description: item.description,
+                url: `https://demo.inelabteamdev.com/product/${item.id}`
+              });
+            }
+          }
+        }
+      }
+      lastCatalogFetch = now;
     } catch (err) {
-      console.error('Failed to refresh catalog cache:', err.message);
-      if (!catalogCache) catalogCache = [];
+      console.error('Failed to refresh catalog:', err.message);
     }
   }
 
+  const allItems = Array.from(catalogMap.values());
   const q = query.trim().toLowerCase();
+
   if (!q) {
-    return catalogCache.slice(0, 30);
+    return allItems
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, 30);
   }
 
-  return catalogCache.filter(item =>
+  // Filter and rank: items with query in name come first, then brand/sku/category
+  const matches = allItems.filter(item =>
     item.name.toLowerCase().includes(q) ||
     item.brand.toLowerCase().includes(q) ||
     item.sku.toLowerCase().includes(q) ||
     item.category.toLowerCase().includes(q)
-  ).slice(0, 50);
+  );
+
+  matches.sort((a, b) => {
+    const aNameMatch = a.name.toLowerCase().includes(q);
+    const bNameMatch = b.name.toLowerCase().includes(q);
+    if (aNameMatch && !bNameMatch) return -1;
+    if (!aNameMatch && bNameMatch) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  return matches.slice(0, 40);
 }
 
 /**
@@ -111,8 +133,19 @@ async function scrapeProduct(productUrl) {
     console.log(`[Scraper] Navigating to ${productUrl}...`);
     await page.goto(productUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // Ensure product details card is loaded
-    await page.waitForSelector('.detail-card, .price-block', { state: 'visible', timeout: 15000 });
+    // Install a persistent MutationObserver to suppress cookie overlays.
+    // The overlay is a SPA component that can re-render at any time (after navigation,
+    // after mouse events, etc). One-shot removal is not enough — this watches the DOM
+    // continuously and removes any cookie overlay the instant it re-appears.
+    await page.evaluate(() => {
+      const removeCookieOverlay = () => {
+        const el = document.querySelector('.cookie-overlay, .cookie-banner, [class*="cookie"], [id*="cookie"]');
+        if (el) el.remove();
+      };
+      removeCookieOverlay(); // Remove immediately if already present
+      const observer = new MutationObserver(removeCookieOverlay);
+      observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
+    });
 
     const priceBlock = page.locator('.price-block');
     await priceBlock.waitFor({ state: 'visible', timeout: 10000 });
@@ -138,8 +171,9 @@ async function scrapeProduct(productUrl) {
       return btn && !btn.disabled;
     }, { timeout: 6000 });
 
-    // Click Reveal price
-    await revealBtn.click();
+    // Click Reveal price (MutationObserver above ensures overlay never blocks this)
+    await revealBtn.click({ force: true });
+
 
     // Wait for the state to transition to .price-success OR .price-error
     const successSelector = '.price-block.price-success';
@@ -148,13 +182,13 @@ async function scrapeProduct(productUrl) {
     await Promise.race([
       page.waitForSelector(successSelector, { state: 'visible', timeout: 20000 }),
       page.waitForSelector(errorSelector, { state: 'visible', timeout: 20000 })
-    ]);
+    ]).catch(() => {});
 
     // Check if the store threw an intentional error
-    const isError = await page.locator(errorSelector).isVisible();
+    const isError = await page.locator(errorSelector).isVisible().catch(() => false);
     if (isError) {
-      const errorMsg = await page.locator(`${errorSelector} .price-substatus`).innerText();
-      throw new Error(`Store error: ${errorMsg || 'Failed to reveal price'}`);
+      const errorMsg = await page.locator(`${errorSelector} .price-substatus`).innerText().catch(() => 'Failed to reveal price');
+      throw new Error(`Store error: ${errorMsg}`);
     }
 
     // Extract real price: avoid hidden decoy spans (.price-value and .amount[data-price="true"])
