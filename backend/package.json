@@ -7,7 +7,7 @@
     "start": "node server.js",
     "dev": "node server.js",
     "scrape:headed": "node headed-run.js",
-    "postinstall": "PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium --with-deps",
+    "postinstall": "PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
