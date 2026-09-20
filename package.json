@@ -1,0 +1,14 @@
+{
+  "name": "ine-web-scraper",
+  "version": "1.0.0",
+  "description": "Product Price Tracker for iNE mock store",
+  "scripts": {
+    "start:backend": "npm --prefix backend start",
+    "start:frontend": "npm --prefix frontend run dev",
+    "scrape:headed": "npm --prefix backend run scrape:headed",
+    "build:frontend": "npm --prefix frontend run build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
