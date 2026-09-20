@@ -10,6 +10,7 @@
  * - Error/retry handling
  */
 
+process.env.PLAYWRIGHT_BROWSERS_PATH = '0';
 const { chromium } = require('playwright');
 
 function cleanPrice(rawPrice) {

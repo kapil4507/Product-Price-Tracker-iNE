@@ -1,3 +1,6 @@
+// Ensure Playwright looks in node_modules for the browser binary (persisted on cloud hosts like Render)
+process.env.PLAYWRIGHT_BROWSERS_PATH = '0';
+
 const { chromium } = require('playwright');
 const supabase = require('../config/supabase');
 

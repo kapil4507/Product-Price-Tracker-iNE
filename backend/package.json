@@ -7,6 +7,7 @@
     "start": "node server.js",
     "dev": "node server.js",
     "scrape:headed": "node headed-run.js",
+    "postinstall": "npx playwright install chromium",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
